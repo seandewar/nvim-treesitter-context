@@ -89,6 +89,7 @@ local M = {}
 
 function M.update_context()
   if api.nvim_get_option('buftype') ~= '' then
+    M.close()
     return
   end
 
@@ -132,10 +133,10 @@ function M.close()
 end
 
 function M.open()
-  if winid == nil or not api.nvim_win_is_valid(winid) then
-    local gutter_width = get_gutter_width()
-    local win_width = api.nvim_win_get_width(0) - gutter_width
+  local gutter_width = get_gutter_width()
+  local win_width = api.nvim_win_get_width(0) - gutter_width
 
+  if winid == nil or not api.nvim_win_is_valid(winid) then
     winid = api.nvim_open_win(bufnr, false, {
       relative = 'win',
       width = win_width,
@@ -145,20 +146,27 @@ function M.open()
       focusable = false,
       style = 'minimal',
     })
-  -- else
-  --   api.nvim_win_set_config(winid, {
-  --     width = #label,
-  --   })
+  else
+    api.nvim_win_set_config(winid, {
+      relative = 'win',
+      width = win_width,
+      row = 0,
+      col = gutter_width,
+    })
   end
 
   api.nvim_buf_set_lines(bufnr, 0, -1, false, { label })
 end
 
 function M.enable()
+  local option_triggers = 'buftype,foldcolumn,number,numberwidth,relativenumber,signcolumn'
+
   nvim_augroup('treesitter_context', {
+    {'OptionSet',   option_triggers,   'silent lua require("treesitter-context").update_context()'},
+    {'VimResized',  '*',               'silent lua require("treesitter-context").update_context()'},
     {'CursorMoved', '*',               'silent lua require("treesitter-context").update_context()'},
     {'User',        'SessionSavePre',  'silent lua require("treesitter-context").close()'},
-    {'User',        'SessionSavePost', 'silent lua require("treesitter-context").open()'},
+    {'User',        'SessionSavePost', 'silent lua require("treesitter-context").update_context()'},
   })
 
   M.update_context()
