@@ -144,7 +144,7 @@ end
 
 function M.update_context()
   if api.nvim_get_option('buftype') ~= '' or
-      vim.fn.getwinvar(0, '&previewwindow') ~= 0 then
+      api.nvim_win_get_option(0, 'previewwindow') ~= 0 then
     M.close()
     return
   end
