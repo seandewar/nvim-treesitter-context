@@ -94,86 +94,12 @@ function M.get_context(opts)
   return matches
 end
 
-function M.update_context()
-  if api.nvim_get_option('buftype') ~= '' or
-      vim.fn.getwinvar(0, '&previewwindow') ~= 0 then
-    M.close()
-    return
-  end
-
-  local context = M.get_context()
-
-  current_node = nil
-
-  if context then
-    local first_visible_line = api.nvim_call_function('line', { 'w0' })
-
-    for i = #context, 1, -1 do
-      local node = context[i]
-      local row = node:start()
-
-      if row < (first_visible_line - 1) then
-        current_node = node
-        break
-      end
-    end
-  end
-
-  if current_node then
-    M.open()
-  else
-    M.close()
-  end
-
-  return { winid, get_gutter_width(), context }
-end
-
-function M.close()
-  if winid ~= nil and api.nvim_win_is_valid(winid) then
-    -- Can't close other windows when the command-line window is open
-    if api.nvim_call_function('getcmdwintype', {}) ~= '' then
-      return
-    end
-
-    api.nvim_win_close(winid, true)
-  end
-  winid = nil
-end
-
-function M.open()
-  if current_node == nil then
-    return
-  end
-
+function M.update_context_buf()
   local saved_bufnr = api.nvim_get_current_buf()
-  local start_row = current_node:start()
-  local end_row   = current_node:end_()
-
-  local gutter_width = get_gutter_width()
-  local win_width = api.nvim_win_get_width(0) - gutter_width
-
-  if winid == nil or not api.nvim_win_is_valid(winid) then
-    winid = api.nvim_open_win(bufnr, false, {
-      relative = 'win',
-      width = win_width,
-      height = 1,
-      row = 0,
-      col = gutter_width,
-      focusable = false,
-      style = 'minimal',
-    })
-  else
-    api.nvim_win_set_config(winid, {
-      win = api.nvim_get_current_win(),
-      relative = 'win',
-      width = win_width,
-      height = 1,
-      row = 0,
-      col = gutter_width,
-    })
-  end
 
   local start_row, start_col = current_node:start()
+  local end_row   = current_node:end_()
+
   local lines =
     start_col == 0
       and vim.split(get_text_for_node(current_node), '\n')
@@ -204,14 +130,92 @@ function M.open()
         -- but we ignore it :)
         -- Yay?
         local ok, err = pcall(function()
-          api.nvim_buf_set_extmark(bufnr, ns, start_row, start_col,
-                                { end_line = end_row, end_col = end_col,
-                                  hl_group = hl,
-                                  -- ephemeral = true
-                                  })
+          api.nvim_buf_set_extmark(bufnr, ns, start_row, start_col, {
+            end_line = end_row,
+            end_col = end_col,
+            hl_group = hl,
+            -- ephemeral = true
+          })
         end)
       end
     end
+  end
+end
+
+function M.update_context()
+  if api.nvim_get_option('buftype') ~= '' or
+      vim.fn.getwinvar(0, '&previewwindow') ~= 0 then
+    M.close()
+    return
+  end
+
+  local context = M.get_context()
+
+  current_node = nil
+
+  if context then
+    local first_visible_line = api.nvim_call_function('line', { 'w0' })
+
+    for i = #context, 1, -1 do
+      local node = context[i]
+      local row = node:start()
+
+      if row < (first_visible_line - 1) then
+        current_node = node
+        break
+      end
+    end
+  end
+
+  if current_node then
+    M.update_context_buf()
+    M.open()
+  else
+    M.close()
+  end
+
+  return { winid, get_gutter_width(), context }
+end
+
+function M.close()
+  if winid ~= nil and api.nvim_win_is_valid(winid) then
+    -- Can't close other windows when the command-line window is open
+    if api.nvim_call_function('getcmdwintype', {}) ~= '' then
+      return
+    end
+
+    api.nvim_win_close(winid, true)
+  end
+  winid = nil
+end
+
+function M.open()
+  if current_node == nil then
+    return
+  end
+
+  local gutter_width = get_gutter_width()
+  local win_width = api.nvim_win_get_width(0) - gutter_width
+
+  if winid == nil or not api.nvim_win_is_valid(winid) then
+    winid = api.nvim_open_win(bufnr, false, {
+      relative = 'win',
+      width = win_width,
+      height = 1,
+      row = 0,
+      col = gutter_width,
+      focusable = false,
+      style = 'minimal',
+    })
+  else
+    api.nvim_win_set_config(winid, {
+      win = api.nvim_get_current_win(),
+      relative = 'win',
+      width = win_width,
+      height = 1,
+      row = 0,
+      col = gutter_width,
+    })
   end
 end
 
