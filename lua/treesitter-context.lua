@@ -62,43 +62,13 @@ local nvim_augroup = function(group_name, definitions)
 end
 
 
+-- Private
 
--- Exports
-
-local M = {}
-
-function M.get_context(opts)
-  if not parsers.has_parser() then return nil end
-  local options = opts or {}
-  local type_patterns = options.type_patterns or {'class', 'function', 'method'}
-  local transform_fn = options.transform_fn or transform_line
-  local separator = options.separator or ' -> '
-
-  local current_node = ts_utils.get_node_at_cursor()
-  if not current_node then return nil end
-
-  local matches = {}
-  local expr = current_node
-
-  while expr do
-    if is_valid(expr, type_patterns) then
-      table.insert(matches, 1, expr)
-    end
-    expr = expr:parent()
-  end
-
-  if #matches == 0 then
-    return nil
-  end
-
-  return matches
-end
-
-function M.update_context_buf()
+local function update_context_buf()
   local saved_bufnr = api.nvim_get_current_buf()
 
   local start_row, start_col = current_node:start()
-  local end_row   = current_node:end_()
+  local end_row = current_node:end_()
 
   local lines =
     start_col == 0
@@ -142,16 +112,9 @@ function M.update_context_buf()
   end
 end
 
-function M.update_context()
-  if api.nvim_get_option('buftype') ~= '' or
-      api.nvim_win_get_option(0, 'previewwindow') ~= 0 then
-    M.close()
-    return
-  end
-
-  local context = M.get_context()
-
+local function update_context_node()
   current_node = nil
+  local context = M.get_context()
 
   if context then
     local first_visible_line = api.nvim_call_function('line', { 'w0' })
@@ -166,15 +129,59 @@ function M.update_context()
       end
     end
   end
+end
+
+
+-- Exports
+
+local M = {}
+
+function M.get_context(opts)
+  if not parsers.has_parser() then return nil end
+  local options = opts or {}
+  local type_patterns = options.type_patterns or {'class', 'function', 'method'}
+  local transform_fn = options.transform_fn or transform_line
+  local separator = options.separator or ' -> '
+
+  local current_node = ts_utils.get_node_at_cursor()
+  if not current_node then return nil end
+
+  local matches = {}
+  local expr = current_node
+
+  while expr do
+    if is_valid(expr, type_patterns) then
+      table.insert(matches, 1, expr)
+    end
+    expr = expr:parent()
+  end
+
+  if #matches == 0 then
+    return nil
+  end
+
+  return matches
+end
+
+function M.update_context()
+  if api.nvim_get_option('buftype') ~= '' then
+    current_node = nil
+    M.close()
+    return
+  end
+
+  local previous_node = current_node
+  update_context_node()
 
   if current_node then
-    M.update_context_buf()
+    if current_node ~= previous_node then
+      update_context_buf()
+    end
+
     M.open()
   else
     M.close()
   end
-
-  return { winid, get_gutter_width(), context }
 end
 
 function M.close()
@@ -186,11 +193,12 @@ function M.close()
 
     api.nvim_win_close(winid, true)
   end
+
   winid = nil
 end
 
 function M.open()
-  if current_node == nil then
+  if not current_node then
     return
   end
 
@@ -209,10 +217,7 @@ function M.open()
     })
   else
     api.nvim_win_set_config(winid, {
-      win = api.nvim_get_current_win(),
       relative = 'win',
-      width = win_width,
-      height = 1,
       row = 0,
       col = gutter_width,
     })
@@ -221,9 +226,11 @@ end
 
 function M.enable()
   nvim_augroup('treesitter_context', {
+    {'OptionSet',   'number,numberwidth,relativenumber,signcolumn,foldcolumn',
+                    'silent lua require("treesitter-context").open()'},
+    {'OptionSet',   'buftype',         'silent lua require("treesitter-context").update_context()'},
     {'Scroll',      '*',               'silent lua require("treesitter-context").update_context()'},
     {'CursorMoved', '*',               'silent lua require("treesitter-context").update_context()'},
-    {'WinEnter',    '*',               'silent lua require("treesitter-context").update_context()'},
     {'WinLeave',    '*',               'silent lua require("treesitter-context").close()'},
     {'VimResized',  '*',               'silent lua require("treesitter-context").open()'},
     {'User',        'SessionSavePre',  'silent lua require("treesitter-context").close()'},
